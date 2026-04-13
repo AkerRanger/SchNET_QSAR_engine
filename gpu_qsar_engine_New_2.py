@@ -6222,17 +6222,25 @@ def run_hpo(
         import time as _t
         _t0 = _t.perf_counter()
 
-        # ── 架構參數（核心 8 個）────────────────────────────────────────
-        hc  = trial.suggest_categorical("hidden_channels",  [64, 128, 256])
-        # num_interactions 改為連續整數分佈（3~8），避免跳過 5/7 這類關鍵值
-        ni  = trial.suggest_int("num_interactions", 3, 8)
-        nf  = trial.suggest_categorical("num_filters", [64, 128, 256])
-        ng  = trial.suggest_int("num_gaussians",   25, 100, step=5)
-        cut = trial.suggest_float("cutoff",         5.0, 15.0)
-        sf  = trial.suggest_float("sigma_factor",   0.5, 2.0)
-        act = trial.suggest_categorical("activation",
-                  ["silu", "gelu", "shifted_softplus"])
-        ml  = trial.suggest_int("mlp_layers",       1, 4)
+        hc  = suggest_hpo_param(trial, "hidden_channels")
+        ni  = trial.suggest_int("num_interactions",
+                                HPO_SEARCH_SPACE["num_interactions"]["low"],
+                                HPO_SEARCH_SPACE["num_interactions"]["high"],
+                                step=1)
+        nf  = suggest_hpo_param(trial, "num_filters")
+        ng  = suggest_hpo_param(trial, "num_gaussians")
+        cut = suggest_hpo_param(trial, "cutoff")
+        sf  = suggest_hpo_param(trial, "sigma_factor")
+        act = trial.suggest_categorical("activation", ["silu", "gelu", "shifted_softplus"])
+        ml  = trial.suggest_int("mlp_layers", 1, 4)
+        
+        # [新增] Morgan FP 支援
+        use_morgan = suggest_hpo_param(trial, "use_morgan_fp")
+        mfp_hidden = suggest_hpo_param(trial, "morgan_fp_hidden")
+        mfp_bits   = suggest_hpo_param(trial, "morgan_fp_bits")
+        
+        # [新增] Dropout
+        drop = suggest_hpo_param(trial, "dropout")
 
         # ── Multi-fidelity lr 微擾動（提升架構評分穩健性）────────────────
         # 允許 lr 在基準值的 ±1個量級內浮動，確保大架構不被固定 lr 低估
@@ -6270,6 +6278,10 @@ def run_hpo(
             activation           = act,
             plateau_patience     = _S1_FIXED["plateau_patience"],
             mlp_layers           = ml,
+            use_morgan_fp        = use_morgan,          # <--- 新增
+            morgan_fp_bits       = mfp_bits,            # <--- 新增
+            morgan_hidden        = mfp_hidden,          # <--- 新增 (確認你的 TrainConfig 欄位名稱)
+            use_heteroscedastic  = True,                # <--- 強制開啟
             scaling_factor       = _S1_FIXED["scaling_factor"],
             use_egnn             = base_train_cfg.use_egnn,
             multitask            = base_train_cfg.multitask,
